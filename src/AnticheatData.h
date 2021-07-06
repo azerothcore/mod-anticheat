@@ -1,63 +1,87 @@
 #ifndef SC_ACDATA_H
 #define SC_ACDATA_H
 
-#include "AnticheatMgr.h"
+#include "Common.h"
 
-#define MAX_REPORT_TYPES 6
+class Player;
+class Unit;
+
+struct MovementInfo;
 
 class AnticheatData
 {
-public:
-    AnticheatData();
-    ~AnticheatData();
+    public:
+        AnticheatData(Player* player = nullptr);
+        ~AnticheatData();
 
-    void SetLastOpcode(uint32 opcode);
-    uint32 GetLastOpcode() const;
+        void Update(uint32 time);
 
-    const MovementInfo& GetLastMovementInfo() const;
-    void SetLastMovementInfo(MovementInfo& moveInfo);
+        void SetSkipOnePacketForASH(bool apply) { m_skipOnePacketForASH = apply; }
+        bool IsSkipOnePacketForASH() const { return m_skipOnePacketForASH; }
+        void SetJumpingbyOpcode(bool jump) { m_isjumping = jump; }
+        bool IsJumpingbyOpcode() const { return m_isjumping; }
+        void SetCanFlybyServer(bool apply) { m_canfly = apply; }
+        bool IsCanFlybyServer() const { return m_canfly; }
 
-    void SetPosition(float x, float y, float z, float o);
+        bool UnderACKmount() const { return m_ACKmounted; }
+        bool UnderACKRootUpd() const { return m_rootUpd; }
+        void SetUnderACKmount();
+        void SetRootACKUpd();
 
-    /*
-    bool GetDisableACCheck() const;
-    void SetDisableACCheck(bool check);
+        // should only be used by packet handlers to validate and apply incoming MovementInfos from clients. Do not use internally to modify m_movementInfo
+        void UpdateMovementInfo(MovementInfo const& movementInfo);
+        bool CheckMovementInfo(MovementInfo const& movementInfo, Unit* mover, bool jump);
+        bool CheckMovement(MovementInfo const& movementInfo, Unit* mover, bool jump);
+        bool CheckOnFlyHack(); // AFH
 
-    uint32 GetDisableACTimer() const;
-    void SetDisableACTimer(uint32 timer);*/
+        void SetLastMoveClientTimestamp(uint32 timestamp) { lastMoveClientTimestamp = timestamp; }
+        void SetLastMoveServerTimestamp(uint32 timestamp) { lastMoveServerTimestamp = timestamp; }
+        uint32 GetLastMoveClientTimestamp() const { return lastMoveClientTimestamp; }
+        uint32 GetLastMoveServerTimestamp() const { return lastMoveServerTimestamp; }
 
-    uint32 GetTotalReports() const;
-    void SetTotalReports(uint32 _totalReports);
+        bool HandleDoubleJump(Unit* mover);
 
-    uint32 GetTypeReports(uint32 type) const;
-    void SetTypeReports(uint32 type, uint32 amount);
+        void ResetFallingData();
 
-    float GetAverage() const;
-    void SetAverage(float _average);
+        std::string GetDescriptionACForLogs(uint8 type, float param1 = 0.f, float param2 = 0.f) const;
+        std::string GetPositionACForLogs() const;
 
-    uint32 GetCreationTime() const;
-    void SetCreationTime(uint32 creationTime);
+        void StartWaitingLandOrSwimOpcode();
+        bool IsWaitingLandOrSwimOpcode() const { return m_antiNoFallDmg; }
+        bool IsUnderLastChanceForLandOrSwimOpcode() const { return m_antiNoFallDmgLastChance; }
+        void SetSuccessfullyLanded() { m_antiNoFallDmgLastChance = false; }
+        // END AntiCheat system
 
-    void SetTempReports(uint32 amount, uint8 type);
-    uint32 GetTempReports(uint8 type);
+        // Walking data from move packets
+        void SetWalkingFlag(bool walkstatus) { m_walking = walkstatus; }
+        bool HasWalkingFlag() const { return m_walking; }
 
-    void SetTempReportsTimer(uint32 time, uint8 type);
-    uint32 GetTempReportsTimer(uint8 type);
+        bool NoFallingDamage(uint16 opcode);
+        void HandleNoFallingDamage(uint16 opcode);
 
-    void SetDailyReportState(bool b);
-    bool GetDailyReportState();
-private:
-    uint32 lastOpcode;
-    MovementInfo lastMovementInfo;
-    //bool disableACCheck;
-    //uint32 disableACCheckTimer;
-    uint32 totalReports;
-    uint32 typeReports[MAX_REPORT_TYPES];
-    float average;
-    uint32 creationTime;
-    uint32 tempReports[MAX_REPORT_TYPES];
-    uint32 tempReportsTimer[MAX_REPORT_TYPES];
-    bool hasDailyReport;
+        void RecordAntiCheatLog(std::string const& description);
+
+    private:
+        Player* m_owner;
+
+        uint32 m_flyhackTimer;
+        uint32 m_mountTimer;
+        uint32 m_rootUpdTimer;
+        uint32 m_antiNoFallDmgTimer;
+
+        // Timestamp on client clock of the moment the most recently processed movement packet was SENT by the client
+        uint32 lastMoveClientTimestamp;
+        // Timestamp on server clock of the moment the most recently processed movement packet was RECEIVED from the client
+        uint32 lastMoveServerTimestamp;
+
+        bool m_ACKmounted;
+        bool m_rootUpd;
+        bool m_skipOnePacketForASH; // Used for skip 1 movement packet after charge or blink
+        bool m_isjumping;           // Used for jump-opcode in movementhandler
+        bool m_canfly;              // Used for access at fly flag - handled restricted access
+        bool m_antiNoFallDmg;
+        bool m_antiNoFallDmgLastChance;
+        bool m_walking;             // Player walking
 };
 
 #endif

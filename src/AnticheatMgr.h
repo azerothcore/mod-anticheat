@@ -16,85 +16,60 @@
 #ifndef SC_ACMGR_H
 #define SC_ACMGR_H
 
-//#include <ace/Singleton.h>
-#include "Common.h"
-#include "SharedDefines.h"
-#include "ScriptMgr.h"
 #include "AnticheatData.h"
-#include "Chat.h"
 #include "ObjectGuid.h"
 
 class Player;
-class AnticheatData;
+class Unit;
 
-enum ReportTypes
-{
-    SPEED_HACK_REPORT = 0,
-    FLY_HACK_REPORT,
-    WALK_WATER_HACK_REPORT,
-    JUMP_HACK_REPORT,
-    TELEPORT_PLANE_HACK_REPORT,
-    CLIMB_HACK_REPORT,
-
-   // MAX_REPORT_TYPES
-};
-
-enum DetectionTypes
-{
-    SPEED_HACK_DETECTION            = 1,
-    FLY_HACK_DETECTION              = 2,
-    WALK_WATER_HACK_DETECTION       = 4,
-    JUMP_HACK_DETECTION             = 8,
-    TELEPORT_PLANE_HACK_DETECTION   = 16,
-    CLIMB_HACK_DETECTION            = 32
-};
+struct MovementInfo;
 
 // GUID is the key.
-typedef std::map<ObjectGuid, AnticheatData> AnticheatPlayersDataMap;
+typedef std::unordered_map<ObjectGuid, AnticheatData> AnticheatPlayersDataMap;
 
 class AnticheatMgr
 {
-//    friend class ACE_Singleton<AnticheatMgr, ACE_Null_Mutex>;
     AnticheatMgr();
     ~AnticheatMgr();
 
     public:
-    static AnticheatMgr* instance()
-        {
-           static AnticheatMgr* instance = new AnticheatMgr();
-           return instance;
-        }
+        static AnticheatMgr* instance();
 
-        void StartHackDetection(Player* player, MovementInfo movementInfo, uint32 opcode);
-        void DeletePlayerReport(Player* player, bool login);
-        void DeletePlayerData(Player* player);
-        void CreatePlayerData(Player* player);
-        void SavePlayerData(Player* player);
+        void SetExcludedMaps();
+        void SetExcludedAreas();
 
-        void HandlePlayerLogin(Player* player);
+        void HandlePlayerLoadFromDB(Player* player);
         void HandlePlayerLogout(Player* player);
 
-        uint32 GetTotalReports(ObjectGuid guid);
-        float GetAverage(ObjectGuid guid);
-        uint32 GetTypeReports(ObjectGuid guid, uint8 type);
+        void DeleteCommand(ObjectGuid guid = ObjectGuid::Empty);
 
-        void AnticheatGlobalCommand(ChatHandler* handler);
-        void AnticheatDeleteCommand(ObjectGuid guid);
+        void SetClientTimestamps(Player* player);
+        void Update(Player* player, uint32 time);
 
-        void ResetDailyReportStates();
+        void SetSkipOnePacketForASH(Player* player, bool apply);
+        void SetCanFlybyServer(Player* player, bool apply);
+        void SetUnderACKmount(Player* player);
+        void SetRootACKUpd(Player* player);
+        void SetJumpingbyOpcode(Player* player, bool jump);
+
+        void UpdateMovementInfo(Player* player, MovementInfo const& movementInfo);
+
+        bool isMapDisabledForAC(uint32 mapid) const { return excludeACMapsId.count(mapid); }
+        bool isAreaDisabledForAC(uint32 areaid) const { return excludeACAreasId.count(areaid); }
+
+        bool HandleDoubleJump(Player* player, Unit* mover);
+        bool CheckMovementInfo(Player* player, MovementInfo const& movementInfo, Unit* mover, bool jump);
+
+        void ResetFallingData(Player* player);
+        bool NoFallingDamage(Player* player, uint16 opcode);
+        void HandleNoFallingDamage(Player* player, uint16 opcode);
+        void SetSuccessfullyLanded(Player* player);
+
     private:
-        void SpeedHackDetection(Player* player, MovementInfo movementInfo);
-        void FlyHackDetection(Player* player, MovementInfo movementInfo);
-        void WalkOnWaterHackDetection(Player* player, MovementInfo movementInfo);
-        void JumpHackDetection(Player* player, MovementInfo movementInfo,uint32 opcode);
-        void TeleportPlaneHackDetection(Player* player, MovementInfo);
-        void ClimbHackDetection(Player* player,MovementInfo movementInfo,uint32 opcode);
+        AnticheatPlayersDataMap m_Players;
 
-        void BuildReport(Player* player,uint8 reportType);
-
-        bool MustCheckTempReports(uint8 type);
-
-        AnticheatPlayersDataMap m_Players;                        ///< Player data
+        std::unordered_set<uint32> excludeACMapsId;
+        std::unordered_set<uint32> excludeACAreasId;
 };
 
 #define sAnticheatMgr AnticheatMgr::instance()

@@ -6,7 +6,7 @@
 
 ## BASE SQL
 
-DB_CHARACTERS_CUSTOM_PATHS+=(
-	"$MOD_ANTICHEAT_ROOT/sql/characters/base/"
+DB_WORLD_CUSTOM_PATHS+=(
+	"$MOD_ANTICHEAT_ROOT/sql/world/base/"
 )
 

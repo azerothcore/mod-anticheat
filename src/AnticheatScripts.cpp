@@ -1,83 +1,105 @@
-#include "Configuration/Config.h"
 #include "AnticheatMgr.h"
-#include "Object.h"
-#include "AccountMgr.h"
-#include "Chat.h"
-#include "Player.h"
+#include "ScriptMgr.h"
 
-int64 resetTime = 0;
-int64 lastIterationPlayer = sWorld->GetUptime() + 30;//TODO: change 30 secs static to a configurable option
 class AnticheatPlayerScript : public PlayerScript
 {
 public:
-	AnticheatPlayerScript()
-		: PlayerScript("AnticheatPlayerScript")
+	AnticheatPlayerScript() : PlayerScript("AnticheatPlayerScript")
 	{
 	}
+
+    void OnLoadFromDB(Player* player) override
+    {
+        sAnticheatMgr->HandlePlayerLoadFromDB(player);
+    }
 
 	void OnLogout(Player* player) override
 	{
 		sAnticheatMgr->HandlePlayerLogout(player);
 	}
 
-	void OnLogin(Player* player) override
-	{
-		sAnticheatMgr->HandlePlayerLogin(player);
-		if(sConfigMgr->GetBoolDefault("Anticheat.LoginMessage", true))
-			ChatHandler(player->GetSession()).PSendSysMessage("This server is running an Anticheat Module.");
-	}
+    void OnUpdate(Player* player, uint32 p_time) override
+    {
+        sAnticheatMgr->Update(player, p_time);
+    }
+
+    void AnticheatSetSkipOnePacketForASH(Player* player, bool apply) override
+    {
+        sAnticheatMgr->SetSkipOnePacketForASH(player, apply);
+    }
+
+    void AnticheatSetCanFlybyServer(Player* player, bool apply) override
+    {
+        sAnticheatMgr->SetCanFlybyServer(player, apply);
+    }
+
+    void AnticheatSetUnderACKmount(Player* player) override
+    {
+        sAnticheatMgr->SetUnderACKmount(player);
+    }
+
+    void AnticheatSetRootACKUpd(Player* player) override
+    {
+        sAnticheatMgr->SetRootACKUpd(player);
+    }
+
+    void AnticheatSetJumpingbyOpcode(Player* player, bool jump) override
+    {
+        sAnticheatMgr->SetJumpingbyOpcode(player, jump);
+    }
+
+    void AnticheatUpdateMovementInfo(Player* player, MovementInfo const& movementInfo) override
+    {
+        sAnticheatMgr->UpdateMovementInfo(player, movementInfo);
+    }
+
+    bool AnticheatHandleDoubleJump(Player* player, Unit* mover) override
+    {
+        return sAnticheatMgr->HandleDoubleJump(player, mover);
+    }
+
+    bool AnticheatCheckMovementInfo(Player* player, MovementInfo const& movementInfo, Unit* mover, bool jump) override
+    {
+        return sAnticheatMgr->CheckMovementInfo(player, movementInfo, mover, jump);
+    }
+
+    void AnticheatResetFallingData(Player* player) override
+    {
+        sAnticheatMgr->ResetFallingData(player);
+    }
+
+    bool AnticheatNoFallingDamage(Player* player, uint16 opcode) override
+    {
+        return sAnticheatMgr->NoFallingDamage(player, opcode);
+    }
+
+    void AnticheatHandleNoFallingDamage(Player* player, uint16 opcode) override
+    {
+        sAnticheatMgr->HandleNoFallingDamage(player, opcode);
+    }
+
+    void AnticheatSetSuccessfullyLanded(Player* player) override
+    {
+        sAnticheatMgr->SetSuccessfullyLanded(player);
+    }
 };
+
 class AnticheatWorldScript : public WorldScript
 {
 public:
-	AnticheatWorldScript()
-		: WorldScript("AnticheatWorldScript")
-	{
-	}
-	void OnUpdate(uint32 /* diff */) override // unusued parameter
-	{
-		if (sWorld->GetGameTime() > resetTime)
-		{
-			sLog->outString( "Anticheat: Resetting daily report states.");
-			sAnticheatMgr->ResetDailyReportStates();
-			UpdateReportResetTime();
-			sLog->outString( "Anticheat: Next daily report reset: %ld", resetTime);
-		}
-		if (sWorld->GetUptime() > lastIterationPlayer)
-		{
-			lastIterationPlayer = sWorld->GetUptime() + sConfigMgr->GetIntDefault("Anticheat.SaveReportsTime", 60);
-			sLog->outString( "Saving reports for %u players.", sWorld->GetPlayerCount());
-
-			for (SessionMap::const_iterator itr = sWorld->GetAllSessions().begin(); itr != sWorld->GetAllSessions().end(); ++itr)
-				if (Player* plr = itr->second->GetPlayer())
-					sAnticheatMgr->SavePlayerData(plr);
-		}
-	}
-	void OnAfterConfigLoad(bool /* reload */) override // unusued parameter
-	{
-		sLog->outString("AnticheatModule Loaded.");
-	}
-	void UpdateReportResetTime()
-	{
-		resetTime = sWorld->GetNextTimeWithDayAndHour(-1, 6);
-	}
-};
-class AnticheatMovementHandlerScript : public MovementHandlerScript
-{
-	public:
-	AnticheatMovementHandlerScript()
-		: MovementHandlerScript("AnticheatMovementHandlerScript")
-	{
-	}
-    void OnPlayerMove(Player* player, MovementInfo mi, uint32 opcode) override
+    AnticheatWorldScript() : WorldScript("AnticheatWorldScript")
     {
-		if (!AccountMgr::IsGMAccount(player->GetSession()->GetSecurity()) || sConfigMgr->GetBoolDefault("Anticheat.EnabledOnGmAccounts", false))
-			sAnticheatMgr->StartHackDetection(player, mi, opcode);
+    }
+
+    void OnAfterConfigLoad(bool /*reload*/)
+    {
+        sAnticheatMgr->SetExcludedMaps();
+        sAnticheatMgr->SetExcludedAreas();
     }
 };
+
 void startAnticheatScripts()
 {
-	new AnticheatWorldScript();
 	new AnticheatPlayerScript();
-	new AnticheatMovementHandlerScript();
+    new AnticheatWorldScript();
 }
