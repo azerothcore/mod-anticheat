@@ -117,6 +117,22 @@ void AnticheatMgr::StartHackDetection(Player* player, MovementInfo movementInfo,
         return;
     }
 
+    // The server may have moved the player since the last packet (e.g. a
+    // near teleport to a graveyard): measure from the server position.
+    if (!player->IsBeingTeleported() &&
+        m_Players[key].GetLastMapId() == player->GetMapId())
+    {
+        // Blink/Shadowstep are near teleports too: once rebased, their
+        // distance must not be subtracted again by SpeedHackDetection.
+        if ((player->HasAura(BLINK) || player->HasAura(SHADOWSTEP)) &&
+            player->GetPosition() != m_Players[key].GetLastMovementInfo().pos)
+            m_Players[key].SetJustUsedMovementSpell(true);
+
+        m_Players[key].SetPosition(player->GetPositionX(),
+            player->GetPositionY(), player->GetPositionZ(),
+            player->GetOrientation(), player->GetMapId());
+    }
+
     TeleportHackDetection(player, movementInfo);
     SpeedHackDetection(player, movementInfo);
     FlyHackDetection(player, movementInfo);
