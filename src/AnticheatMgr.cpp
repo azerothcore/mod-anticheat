@@ -466,63 +466,7 @@ void AnticheatMgr::SpeedHackDetection(Player* player, MovementInfo movementInfo)
     // how long the player took to move to here.
     uint32 timeDiff = getMSTimeDiff(m_Players[key].GetLastMovementInfo().time, movementInfo.time);
 
-    float speedRate = GetPlayerCurrentSpeedRate(player);
-    if (timeDiff <= ALLOWED_ACK_LAG)
-        speedRate = std::max(speedRate, m_Players[key].GetLastSpeedRate()); // The player might have been moving with a previously faster speed. This should help mitigate a false positive from loosing a speed increase buff.
-
-    if (int32(timeDiff) < 0 && sConfigMgr->GetOption<bool>("Anticheat.CM.TIMEMANIPULATION", true))
-    {
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.WriteLog", true))
-        {
-            uint32 latency = player->GetSession()->GetLatency();
-            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
-            LOG_INFO("anticheat.module", "AnticheatMgr:: Time Manipulation - Hack detected player {} ({}) - Latency: {} ms - IP: {} - Cheat Flagged At: {}", player->GetName(), player->GetGUID().ToString(), latency, player->GetSession()->GetRemoteAddress().c_str(), goXYZ);
-        }
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.WriteLog", true))
-        {
-            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
-            LOG_INFO("anticheat.module", "ANTICHEAT COUNTER MEASURE:: {} Time Diff Corrected (Map: {}) (possible Out of Order Time Manipulation) - Flagged at: {}", player->GetName(), player->GetMapId(), goXYZ);
-        }
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTSCREEN", true))
-        {
-            SendMiddleScreenGMMessage("|cFF00FFFF[|cFF60FF00" + player->GetName() + "|cFF00FFFF] TIME MANIPULATION COUNTER MEASURE ALERT");
-        }
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTCHAT", true))
-        {
-            const char* str = "|cFFFFFC00 TIME MANIPULATION COUNTER MEASURE ALERT";
-            DoToAllGMs([&](Player* p)
-                {
-                    ChatHandler(p->GetSession()).PSendModuleSysMessage(modulestring, LANG_ANTICHEAT_COUNTERMEASURE, str, player->GetName(), player->GetName());
-                });
-        }
-        timeDiff = 1;
-        BuildReport(player, COUNTER_MEASURES_REPORT, movementInfo);
-    }
-
-    if (!timeDiff && sConfigMgr->GetOption<bool>("Anticheat.CM.TIMEMANIPULATION", true))
-    {
-        if (sConfigMgr->GetOption<bool>("Anticheat.WriteLog", true))
-        {
-            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
-            LOG_INFO("anticheat.module", "ANTICHEAT COUNTER MEASURE:: {} Time Diff Corrected (Map: {}) (possible Zero Time Manipulation) - Flagged at: {}", player->GetName(), player->GetMapId(), goXYZ);
-        }
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTSCREEN", true))
-        {
-            SendMiddleScreenGMMessage("|cFF00FFFF[|cFF60FF00" + player->GetName() + "|cFF00FFFF] TIME MANIPULATION COUNTER MEASURE ALERT");
-        }
-        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTCHAT", true))
-        {
-            const char* str = "|cFFFFFC00 TIME MANIPULATION COUNTER MEASURE ALERT";
-            DoToAllGMs([&](Player* p)
-                {
-                    ChatHandler(p->GetSession()).PSendModuleSysMessage(modulestring, LANG_ANTICHEAT_COUNTERMEASURE, str, player->GetName(), player->GetName());
-                });
-        }
-        timeDiff = 1;
-        BuildReport(player, COUNTER_MEASURES_REPORT, movementInfo);
-    }
-
-    // Adjust distance from Blink/Shadowstep.
+        // Adjust distance from Blink/Shadowstep.
     if (player->HasAura(BLINK) || player->HasAura(SHADOWSTEP))
     {
         // Only adjust the travelled distance if the player previously didn't use a movement spell or didn't move at all since they previously used the movement spell.
@@ -541,6 +485,11 @@ void AnticheatMgr::SpeedHackDetection(Player* player, MovementInfo movementInfo)
     float clientSpeedRate = 0.0f;
     if (float floatTimeDiff = float(timeDiff))
         clientSpeedRate = distance2D * 1000.0f / floatTimeDiff;
+
+    // Get the player's speed rate at the correct timing after calculating the clientSpeedRate, as the player may have just had an acceleration/deceleration buff expire.
+    float speedRate = GetPlayerCurrentSpeedRate(player);
+    if (timeDiff <= ALLOWED_ACK_LAG)
+        speedRate = std::max(speedRate, m_Players[key].GetLastSpeedRate()); // The player might have been moving with a previously faster speed. This should help mitigate a false positive from loosing a speed increase buff.
 
     // we create a diff speed in uint32 for further precision checking to avoid legit fall and slide
     float diffspeed = clientSpeedRate - speedRate;
@@ -591,6 +540,59 @@ void AnticheatMgr::SpeedHackDetection(Player* player, MovementInfo movementInfo)
                 BuildReport(player, SPEED_HACK_REPORT, movementInfo);
             }
         }
+    }
+
+    // Move the speed CM after the report, so change timeDiff will not effect the speed report
+    if (int32(timeDiff) < 0 && sConfigMgr->GetOption<bool>("Anticheat.CM.TIMEMANIPULATION", true))
+    {
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.WriteLog", true))
+        {
+            uint32 latency = player->GetSession()->GetLatency();
+            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
+            LOG_INFO("anticheat.module", "AnticheatMgr:: Time Manipulation - Hack detected player {} ({}) - Latency: {} ms - IP: {} - Cheat Flagged At: {}", player->GetName(), player->GetGUID().ToString(), latency, player->GetSession()->GetRemoteAddress().c_str(), goXYZ);
+        }
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.WriteLog", true))
+        {
+            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
+            LOG_INFO("anticheat.module", "ANTICHEAT COUNTER MEASURE:: {} Time Diff Corrected (Map: {}) (possible Out of Order Time Manipulation) - Flagged at: {}", player->GetName(), player->GetMapId(), goXYZ);
+        }
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTSCREEN", true))
+        {
+            SendMiddleScreenGMMessage("|cFF00FFFF[|cFF60FF00" + player->GetName() + "|cFF00FFFF] TIME MANIPULATION COUNTER MEASURE ALERT");
+        }
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTCHAT", true))
+        {
+            const char* str = "|cFFFFFC00 TIME MANIPULATION COUNTER MEASURE ALERT";
+            DoToAllGMs([&](Player* p)
+                {
+                    ChatHandler(p->GetSession()).PSendModuleSysMessage(modulestring, LANG_ANTICHEAT_COUNTERMEASURE, str, player->GetName(), player->GetName());
+                });
+        }
+        timeDiff = 1;
+        BuildReport(player, COUNTER_MEASURES_REPORT, movementInfo);
+    }
+
+    if (!timeDiff && sConfigMgr->GetOption<bool>("Anticheat.CM.TIMEMANIPULATION", true))
+    {
+        if (sConfigMgr->GetOption<bool>("Anticheat.WriteLog", true))
+        {
+            std::string goXYZ = ".go xyz " + std::to_string(player->GetPositionX()) + " " + std::to_string(player->GetPositionY()) + " " + std::to_string(player->GetPositionZ() + 1.0f) + " " + std::to_string(player->GetMap()->GetId()) + " " + std::to_string(player->GetOrientation());
+            LOG_INFO("anticheat.module", "ANTICHEAT COUNTER MEASURE:: {} Time Diff Corrected (Map: {}) (possible Zero Time Manipulation) - Flagged at: {}", player->GetName(), player->GetMapId(), goXYZ);
+        }
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTSCREEN", true))
+        {
+            SendMiddleScreenGMMessage("|cFF00FFFF[|cFF60FF00" + player->GetName() + "|cFF00FFFF] TIME MANIPULATION COUNTER MEASURE ALERT");
+        }
+        if (sConfigMgr->GetOption<bool>("Anticheat.CM.ALERTCHAT", true))
+        {
+            const char* str = "|cFFFFFC00 TIME MANIPULATION COUNTER MEASURE ALERT";
+            DoToAllGMs([&](Player* p)
+                {
+                    ChatHandler(p->GetSession()).PSendModuleSysMessage(modulestring, LANG_ANTICHEAT_COUNTERMEASURE, str, player->GetName(), player->GetName());
+                });
+        }
+        timeDiff = 1;
+        BuildReport(player, COUNTER_MEASURES_REPORT, movementInfo);
     }
 }
 
